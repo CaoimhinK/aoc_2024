@@ -24,15 +24,14 @@ diff = left.zip(right).reduce(0) do |acc, items|
   acc + (litem - ritem).abs
 end
 
-puts "Diff is: #{diff}"
+puts "Part 1", "Diff is: #{diff}"
+
+puts
 
 left, right = data
-
-
-puts left.size
 
 left.uniq!
 
 sim_score = left.reduce(0) { |acc, item| acc + right.count(item) * item }
 
-puts "SimScore is: #{sim_score}"
+puts "Part 2", "SimScore is: #{sim_score}"

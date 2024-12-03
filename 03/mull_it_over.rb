@@ -2,9 +2,10 @@ input = File.read("./input.txt")
 
 findMul = /mul\((\d{1,3}),(\d{1,3})\)/
 
-results = input.scan(findMul).map { |a, b| a.to_i * b.to_i }.sum
+results_sum = input.scan(findMul).map { |a, b| a.to_i * b.to_i }.sum
 
-puts results.inspect
+puts "Part 1", "Multiplication result is: #{results_sum}"
+puts
 
 findFunc = /(?<func>mul|do|don't)\(((?<one>\d{1,3}),(?<two>\d{1,3}))?\)/
 
@@ -29,4 +30,4 @@ end
 
 results_sum = results.sum
 
-puts results_sum.inspect
+puts "Part 2", "Multiplication result is: #{results_sum}"
