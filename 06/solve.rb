@@ -1,5 +1,3 @@
-require "set"
-
 location_map = File.readlines("./input.txt").map { |line| line.strip.split("") }
 
 GUARD_CHAR = "^"
@@ -18,22 +16,13 @@ class Guard
     @location_map = location_map
     @direction = Direction::UP
     @loop_count = 0
-    @path = {}
-    @loop_thresh = 0
-    @step_count = 0
-
-    @loop_positions = []
-
-    @mep_positions = []
+    @thingos = []
 
     location_map.each_with_index do |row, row_index|
       row.each_with_index do |cell_content, column_index|
         if (cell_content == GUARD_CHAR)
           @row = row_index
           @column = column_index
-          @last_two_vertices = [[@row, @column]]
-
-          @path[[@row, @column]] = { direction: @direction, index: @step_count }
           break
         end
       end
@@ -42,29 +31,6 @@ class Guard
         break
       end
     end
-  end
-
-  def trace_rect
-    case @direction
-    when Direction::UP
-      @loop_positions.any? do |row_index, column_index|
-        _row, col = @last_two_vertices[0]
-        @row == row_index && @column < col && (@column...col).all? { |c| @location_map[@row][c] != OBSTACLE_CHAR }
-      end
-    when Direction::RIGHT
-      @loop_positions.any? do |row_index, column_index|
-        row, _col = @last_two_vertices[0]
-        @column == column_index && @row < row && (@row...row).all? { |r| @location_map[r][@column] != OBSTACLE_CHAR }
-      end
-    end
-  end
-
-  def loop_position?
-    thing = get_neighbour((@direction + 3) % 4) == OBSTACLE_CHAR
-
-    @loop_positions << [@row, @column] if thing
-
-    thing
   end
 
   def get_neighbour(direction)
@@ -80,33 +46,65 @@ class Guard
     end
   end
 
-  def check_rect?
-    mep = trace_rect
+  def walk_to_obstacle(direction)
+    case direction
+    when Direction::UP
+      i = @row - 1
+      loop do
+        break nil if i <= 0
 
-    @mep_positions << [@row, @column] if mep
+        char = @location_map[i][@column]
 
-    mep
+        break @location_map[i - 1][@column] if char == OBSTACLE_CHAR
+
+        i -= 1
+      end
+    when Direction::RIGHT
+      i = @column + 1
+      loop do
+        break nil if i >= @location_map[@row].size - 1
+
+        char = @location_map[@row][i]
+
+        break @location_map[@row][i + 1] if char == OBSTACLE_CHAR
+
+        i += 1
+      end
+    when Direction::DOWN
+      i = @row + 1
+      loop do
+        break nil if i >= @location_map.size - 1
+
+        char = @location_map[i][@column]
+
+        break @location_map[i + 1][@column] if char == OBSTACLE_CHAR
+
+        i += 1
+      end
+    when Direction::LEFT
+      i = @column - 1
+      loop do
+        break nil if i <= 0
+
+        char = @location_map[@row][i]
+
+        break @location_map[@row][i - 1] if char == OBSTACLE_CHAR
+
+        i -= 1
+      end
+    end
   end
 
   def look_forward
     get_neighbour(@direction)
   end
 
-  def _leave_trail
-    @path[[@row, @column]] = { direction: @direction, index: @step_count }
-  end
-
   def turn
-    if @last_two_vertices.last != [@row, @column]
-      @last_two_vertices.shift if @last_two_vertices.size == 2
-      @last_two_vertices << [@row, @column]
-    end
     @direction = (@direction + 1) % 4
   end
 
   def walk
-    _leave_trail
-    @step_count += 1
+    @location_map[@row][@column] = @direction.to_s
 
     case @direction
     when Direction::UP
@@ -142,12 +140,8 @@ class Guard
 
   def make_patrol
     loop do
-      @loop_count += 1 if check_rect?
-
       finished = loop do
         content = look_forward
-
-        loop_position?
 
         if content == OBSTACLE_CHAR
           turn
@@ -155,34 +149,44 @@ class Guard
           break walk
         end
       end
+      at_obstacle = walk_to_obstacle((@direction + 1) % 4)
+
+      if at_obstacle == ((@direction + 2) % 4).to_s
+        @loop_count += 1
+        @thingos << [@row, @column]
+      end
 
       break if finished
     end
   end
 
   def count_positions
-    @path.keys.size
+    @location_map.sum do |row|
+      row.count { |char| ["0", "1", "2", "3"].include? (char) }
+    end
   end
 
-  def count_loops
+  def loop_count
     @loop_count
   end
 
-  def draw_path(to = -1)
+  def draw_path
     @location_map.map.each_with_index do |row, row_index|
       row.map.each_with_index do |char, column_index|
-        if @path.keys[0..to].include?([row_index, column_index])
-          loop = @loop_positions.include?([row_index, column_index])
-          mep = @mep_positions.include?([row_index, column_index])
-          if (loop && mep)
-            "\033[39;45mX\033[0m"
-          elsif loop && !mep
-            "\033[32;45mX\033[0m"
-          elsif !loop && mep
-            "\033[39mX\033[0m"
-          else
-            "\033[32mX\033[0m"
-          end
+        if @thingos.include?([row_index, column_index])
+          "\033[35mX\033[0m"
+        elsif ["0", "1", "2", "3"].include?(char)
+          thing = case char
+            when "0"
+              "^"
+            when "1"
+              ">"
+            when "2"
+              "v"
+            when "3"
+              "<"
+            end
+          "\033[32m#{thing}\033[0m"
         else
           if char == OBSTACLE_CHAR
             "\033[41m#{char}\033[0m"
@@ -201,6 +205,4 @@ guard.make_patrol
 
 puts "Part 1: #{guard.count_positions}"
 
-puts "Part 2: #{guard.count_loops}" # ! doesn't work
-
-puts guard.draw_path(400)
+puts "Part 2: #{guard.loop_count}" # still wrong
