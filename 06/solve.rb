@@ -1,208 +1,123 @@
-location_map = File.readlines("./input.txt").map { |line| line.strip.split("") }
+# frozen_string_literal: true
 
-GUARD_CHAR = "^"
-OBSTACLE_CHAR = "#"
-VISITED_CHAR = "X"
+require 'matrix'
 
+##
 class Direction
-  UP = 0
-  RIGHT = 1
-  DOWN = 2
-  LEFT = 3
+  attr_reader :dir
+
+  def initialize(dir)
+    directions = { up: 0, right: 1, down: 2, left: 3 }
+    @dir = if dir.is_a? Symbol
+             directions[dir]
+           elsif dir.is_a?(Integer) && dir >= 0 && dir < 4
+             dir
+           else
+             raise 'Not a valid direction'
+           end
+  end
+
+  def turn(num = 1)
+    @dir = (@dir + num) % 4
+  end
+
+  def self.turned(dir, num)
+    new_dir = dir.dup
+    new_dir.turn(num)
+    new_dir
+  end
+
+  def char
+    ['^', '>', 'v', '<'][@dir]
+  end
+
+  def vec
+    Vector.elements([
+      [-1, 0],
+      [0, 1],
+      [1, 0],
+      [0, -1]
+    ][@dir])
+  end
+
+  def ==(other)
+    @dir == other.dir
+  end
 end
 
-class Guard
-  def initialize(location_map)
-    @location_map = location_map
-    @direction = Direction::UP
-    @loop_count = 0
-    @thingos = []
+##
+class Patrol
+  def initialize(input)
+    @grid = parse_grid(input)
+    @start_pos = find_guard_position
+  end
 
-    location_map.each_with_index do |row, row_index|
-      row.each_with_index do |cell_content, column_index|
-        if (cell_content == GUARD_CHAR)
-          @row = row_index
-          @column = column_index
-          break
-        end
-      end
+  def parse_grid(input)
+    input.split("\n").map { |row| row.split('') }
+  end
 
-      if (!@position.nil?)
-        break
+  def find_guard_position
+    @grid.each_with_index do |row, row_index|
+      row.each_with_index do |char, col_index|
+        return Vector[row_index, col_index] if char == '^'
       end
     end
   end
 
-  def get_neighbour(direction)
-    case direction
-    when Direction::UP
-      @location_map[@row - 1][@column]
-    when Direction::RIGHT
-      @location_map[@row][@column + 1]
-    when Direction::DOWN
-      @location_map[@row + 1][@column]
-    when Direction::LEFT
-      @location_map[@row][@column - 1]
+  def look_ahead(pos, dir)
+    vec = pos + dir.vec
+
+    row = vec[0]
+    col = vec[1]
+
+    return nil unless in_bounds?(row, col)
+
+    @grid[row][col]
+  end
+
+  def in_bounds?(row, col)
+    row < @grid.size && row >= 0 && col < @grid[0].size && col >= 0
+  end
+
+  def walk(pos, dir)
+    pos + dir.vec
+  end
+
+  def recursive_step(grid, pos, dir)
+    char = look_ahead(pos, dir)
+
+    if char == '#'
+      recursive_step(grid, pos, Direction.turned(dir, 1)) + 0
+    else
+      grid[pos[0]][pos[1]] = dir.char
+
+      return 1 if char.nil?
+
+      unique_position = char == '.' ? 1 : 0
+
+      recursive_step(grid, pos + dir.vec, dir) + unique_position
     end
   end
 
-  def walk_to_obstacle(direction)
-    case direction
-    when Direction::UP
-      i = @row - 1
-      loop do
-        break nil if i <= 0
-
-        char = @location_map[i][@column]
-
-        break @location_map[i - 1][@column] if char == OBSTACLE_CHAR
-
-        i -= 1
-      end
-    when Direction::RIGHT
-      i = @column + 1
-      loop do
-        break nil if i >= @location_map[@row].size - 1
-
-        char = @location_map[@row][i]
-
-        break @location_map[@row][i + 1] if char == OBSTACLE_CHAR
-
-        i += 1
-      end
-    when Direction::DOWN
-      i = @row + 1
-      loop do
-        break nil if i >= @location_map.size - 1
-
-        char = @location_map[i][@column]
-
-        break @location_map[i + 1][@column] if char == OBSTACLE_CHAR
-
-        i += 1
-      end
-    when Direction::LEFT
-      i = @column - 1
-      loop do
-        break nil if i <= 0
-
-        char = @location_map[@row][i]
-
-        break @location_map[@row][i - 1] if char == OBSTACLE_CHAR
-
-        i -= 1
-      end
-    end
+  def find_unique_positions
+    recursive_step(@grid.dup, @start_pos, Direction.new(:up))
   end
 
-  def look_forward
-    get_neighbour(@direction)
-  end
-
-  def turn
-    @direction = (@direction + 1) % 4
-  end
-
-  def walk
-    @location_map[@row][@column] = @direction.to_s
-
-    case @direction
-    when Direction::UP
-      if @row == 0
-        true
-      else
-        @row -= 1
-        false
-      end
-    when Direction::RIGHT
-      if @column == @location_map[0].size - 1
-        true
-      else
-        @column += 1
-        false
-      end
-    when Direction::DOWN
-      if @row == @location_map.size - 1
-        true
-      else
-        @row += 1
-        false
-      end
-    when Direction::LEFT
-      if @column == 0
-        true
-      else
-        @column -= 1
-        false
-      end
-    end
-  end
-
-  def make_patrol
-    loop do
-      finished = loop do
-        content = look_forward
-
-        if content == OBSTACLE_CHAR
-          turn
+  def render(marked)
+    @grid.map.with_index do |row, row_index|
+      row.map.with_index do |char, col_index|
+        if marked.include?(Vector[row_index, col_index])
+          "\e[32mX\e[0m"
         else
-          break walk
+          char
         end
-      end
-      at_obstacle = walk_to_obstacle((@direction + 1) % 4)
-
-      if at_obstacle == ((@direction + 2) % 4).to_s
-        @loop_count += 1
-        @thingos << [@row, @column]
-      end
-
-      break if finished
-    end
-  end
-
-  def count_positions
-    @location_map.sum do |row|
-      row.count { |char| ["0", "1", "2", "3"].include? (char) }
-    end
-  end
-
-  def loop_count
-    @loop_count
-  end
-
-  def draw_path
-    @location_map.map.each_with_index do |row, row_index|
-      row.map.each_with_index do |char, column_index|
-        if @thingos.include?([row_index, column_index])
-          "\033[35mX\033[0m"
-        elsif ["0", "1", "2", "3"].include?(char)
-          thing = case char
-            when "0"
-              "^"
-            when "1"
-              ">"
-            when "2"
-              "v"
-            when "3"
-              "<"
-            end
-          "\033[32m#{thing}\033[0m"
-        else
-          if char == OBSTACLE_CHAR
-            "\033[41m#{char}\033[0m"
-          else
-            char
-          end
-        end
-      end.join("")
+      end.join('')
     end.join("\n")
   end
 end
 
-guard = Guard::new(location_map)
+patrol = Patrol.new(open('./input.txt').read)
 
-guard.make_patrol
+puts "Part 1: #{patrol.find_unique_positions}"
 
-puts "Part 1: #{guard.count_positions}"
-
-puts "Part 2: #{guard.loop_count}" # still wrong
+# puts "Part 2: #{patrol.find_loops}"
